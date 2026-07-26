@@ -3,28 +3,41 @@
 Single Vercel serverless endpoint implementing the exact `propose`/`commit`
 contract from the assignment.
 
-## ⚠️ One unconfirmed detail: receipt signature payload
+## Receipt signature payload
 
-The spec gives the receipt fields and says "first verify every
-`receiptSignature`" and "a receipt is scoped to its evaluation, proposal
-digest, and call ID" — but it never states the exact byte sequence that's
-signed. `lib/crypto.ts` verifies against the canonical (key-sorted, compact)
-JSON of `{evaluationId, dossierId, callId, action, accepted, proposalDigest,
-receiptId}`.
+`lib/crypto.ts` verifies `receiptSignature` against the recursively
+key-sorted, compact JSON of:
 
-**Before your real Check run**, do a dry run against the actual grader (or
-a sample it provides) and confirm this verifies. If it doesn't:
-1. Temporarily log the raw receipt object and the constructed message in
-   `handleCommit` (never log this against real graded evaluations — only
-   scratch/sandbox runs).
-2. Try alternate scopes (e.g. drop `action`, add `profile`/`inputDigest`,
-   or only sign `proposalDigest + receiptId`).
-3. Once it verifies, update `receiptSignedMessage` in `lib/crypto.ts` and
-   remove the debug logging.
+```json
+{ "profile": "...", "evaluationId": "...", "inputDigest": "...", "receipt": { "...every receipt field except receiptSignature" } }
+```
 
-Because verification fails *closed* (rejects rather than accepts on
-mismatch), getting this wrong makes the endpoint safe but non-functional —
-not unsafe — so it's a good first thing to test end-to-end.
+**Still worth a real end-to-end check before your graded Check run**: generate
+a test Ed25519 keypair, sign a receipt exactly this way, and confirm
+`verifyReceiptSignature` accepts it. If it doesn't, temporarily log the raw
+receipt + constructed message in `handleCommit` (sandbox runs only) and
+compare byte-for-byte. Verification fails *closed*, so a mismatch makes the
+endpoint safe but non-functional, not unsafe.
+
+## Conflict detection uses two separate digests
+
+- `inputDigest` — covers `dossiers` only, exactly per spec, since it's
+  echoed back on `commit` and matched against.
+- an internal semantic digest — covers the *whole* propose envelope
+  (`profile`, `dossiers`, `corpus`, `allowedActions`, `receiptVerifier`).
+
+A known `evaluationId` must match on **both** to count as an exact replay
+(→ 200 with the cached proposals). Any drift on either — including a
+single-character change to the `receiptVerifier`'s public key, or a
+mutated `profile` — is content conflict (→ 409), even though the dossiers
+themselves might be byte-identical.
+
+Commit-side, an unknown `evaluationId`, a mismatched `inputDigest`, or a
+mutated `profile` on an otherwise-known evaluation are all treated as 409.
+A commit is validated atomically in two passes: every receipt's scope and
+signature is checked first, and only if *all* pass does pass two run
+effects and persist outcomes — one bad receipt rejects the whole commit
+before anything is recorded or executed.
 
 ## Setup
 
@@ -98,8 +111,8 @@ Submit the resulting URL, e.g. `https://mailroom-agent-yourname.vercel.app/api/m
 
 ## What's still a stub / needs your attention
 
-1. **Confirm the receipt signature payload** — see warning above. This is
-   the single highest-risk unknown.
+1. **Confirm the receipt signature payload end-to-end** — see above; do a
+   real test before your graded Check.
 2. **Real side-effect execution** in `handleCommit` — currently records
    `executed` after the dedup/signature/scope checks pass, but doesn't
    actually write anywhere. Wire in whatever "create a draft" /
