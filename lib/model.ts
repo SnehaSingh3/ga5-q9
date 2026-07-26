@@ -52,7 +52,22 @@ export async function decideBatch(
     dossiers,
   });
 
-  const raw = await callModel(userContent);
+  let raw: string;
+  try {
+    raw = await callModel(userContent);
+  } catch (err) {
+    // Model call failed entirely (bad model name, network error, rate limit,
+    // etc.) -- fail closed to quarantine for the whole batch rather than
+    // letting this throw crash/reset the whole request.
+    console.error("Model call failed, quarantining batch:", err);
+    return dossiers.map((d) => ({
+      dossierId: d.dossierId,
+      action: "quarantine_item" as const,
+      target: null,
+      payload: {},
+      evidence: [d.sources[0]?.lines[0]?.lineId ?? "unknown"],
+    }));
+  }
   const parsed = safeJsonParse(raw);
   const decisions: ModelDecision[] = parsed?.decisions ?? [];
 
