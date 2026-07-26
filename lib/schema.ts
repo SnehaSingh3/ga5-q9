@@ -52,7 +52,10 @@ const CorpusSchema = z.object({
 });
 
 export const ProposeRequestSchema = z.object({
-  profile: z.literal(PROFILE),
+  // Not a literal: a wrong profile on a KNOWN evaluationId is content drift
+  // (-> 409), while a wrong profile on a fresh evaluationId is a plain
+  // schema/support error (-> 400). The handler enforces this distinction.
+  profile: z.string(),
   operation: z.literal("propose"),
   evaluationId: z.string().min(1),
   receiptVerifier: ReceiptVerifierSchema,
@@ -106,7 +109,7 @@ export const ReceiptEntrySchema = z.object({
 });
 
 export const CommitRequestSchema = z.object({
-  profile: z.literal(PROFILE),
+  profile: z.string(),
   operation: z.literal("commit"),
   evaluationId: z.string(),
   inputDigest: z.string(),
