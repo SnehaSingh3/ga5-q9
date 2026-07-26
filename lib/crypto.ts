@@ -8,38 +8,43 @@ interface PublicKeyJwk {
 }
 
 /**
- * IMPORTANT / UNCONFIRMED: the spec doesn't state the exact byte sequence
- * the grader signs to produce `receiptSignature`. Based on "A receipt is
- * scoped to its evaluation, proposal digest, and call ID," this verifies
- * against the canonical (key-sorted, compact) JSON of the fields the spec
- * explicitly calls scoping-relevant: evaluationId, dossierId, callId,
- * action, accepted, proposalDigest, receiptId.
+ * Signed message = recursively key-sorted, compact JSON of:
+ *   { profile, evaluationId, inputDigest, receipt: {...every receipt field except receiptSignature} }
+ * where `receipt` is the exact per-receipt entry as sent (dossierId, callId,
+ * action, accepted, proposalDigest, receiptId) -- no reordering, no dropped
+ * fields, no added fields beyond what the grader sent minus the signature
+ * itself.
  *
- * If your first real propose/commit round-trip fails verification, that's
- * the first thing to check -- capture one real (evaluationId, receipt)
- * pair and try alternate canonical constructions (e.g. only
- * evaluationId+proposalDigest+callId+receiptId+accepted, or including
- * `profile`/`inputDigest`) until verification succeeds. Log the raw
- * receipt + attempted message during dev, then remove the log before
- * submitting.
+ * Still worth a quick empirical check on your first real round-trip: if
+ * verification fails, temporarily log the raw receipt + this constructed
+ * message (dev/sandbox runs only, never against real graded evaluations)
+ * and compare byte-for-byte against what you'd expect.
  */
-export function receiptSignedMessage(receipt: {
+export function receiptSignedMessage(params: {
+  profile: string;
   evaluationId: string;
-  dossierId: string;
-  callId: string;
-  action: string;
-  accepted: boolean;
-  proposalDigest: string;
-  receiptId: string;
+  inputDigest: string;
+  receipt: {
+    dossierId: string;
+    callId: string;
+    action: string;
+    accepted: boolean;
+    proposalDigest: string;
+    receiptId: string;
+  };
 }): Buffer {
   const scoped = {
-    evaluationId: receipt.evaluationId,
-    dossierId: receipt.dossierId,
-    callId: receipt.callId,
-    action: receipt.action,
-    accepted: receipt.accepted,
-    proposalDigest: receipt.proposalDigest,
-    receiptId: receipt.receiptId,
+    profile: params.profile,
+    evaluationId: params.evaluationId,
+    inputDigest: params.inputDigest,
+    receipt: {
+      dossierId: params.receipt.dossierId,
+      callId: params.receipt.callId,
+      action: params.receipt.action,
+      accepted: params.receipt.accepted,
+      proposalDigest: params.receipt.proposalDigest,
+      receiptId: params.receipt.receiptId,
+    },
   };
   return Buffer.from(canonicalStringify(scoped), "utf8");
 }
