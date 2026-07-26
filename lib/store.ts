@@ -64,6 +64,22 @@ export async function getEvaluationInputDigest(evaluationId: string): Promise<st
   return (await redis.get<string>(ns(`inputdigest:${evaluationId}`))) ?? null;
 }
 
+/**
+ * The full semantic envelope digest (profile + dossiers + corpus +
+ * allowedActions + receiptVerifier) captured at propose-time, used for
+ * conflict detection distinct from the dossier-only inputDigest.
+ */
+export async function saveEvaluationSemanticDigest(
+  evaluationId: string,
+  semanticDigest: string
+): Promise<void> {
+  await redis.set(ns(`semanticdigest:${evaluationId}`), semanticDigest);
+}
+
+export async function getEvaluationSemanticDigest(evaluationId: string): Promise<string | null> {
+  return (await redis.get<string>(ns(`semanticdigest:${evaluationId}`))) ?? null;
+}
+
 /** Ed25519 public key JWK supplied in the propose request's receiptVerifier, needed to verify commit-time receipts. */
 export async function saveEvaluationVerifierKey(
   evaluationId: string,
