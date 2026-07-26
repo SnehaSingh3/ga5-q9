@@ -42,6 +42,27 @@ export function computeInputDigest(dossiers: unknown[]): string {
 }
 
 /**
+ * Semantic content digest for conflict detection: covers the WHOLE
+ * meaningful propose envelope (profile, dossiers, corpus, allowedActions,
+ * receiptVerifier) -- not just the dossiers. This is deliberately separate
+ * from `inputDigest`, which per spec must stay scoped to `dossiers` only
+ * (it's echoed back and matched against on commit). A single-character
+ * change anywhere in this broader envelope -- e.g. the receiptVerifier's
+ * public key, or the profile string -- under an already-seen evaluationId
+ * is content drift and must be rejected with 409, even though the dossiers
+ * themselves (and therefore inputDigest) are byte-identical.
+ */
+export function computeSemanticDigest(envelope: {
+  profile: string;
+  dossiers: unknown[];
+  corpus: unknown;
+  allowedActions: unknown[];
+  receiptVerifier: unknown;
+}): string {
+  return sha256Hex(canonicalStringify(envelope));
+}
+
+/**
  * proposalDigest per spec: keep exactly dossierId, callId, action, target
  * (null when absent), payload, evidence (sorted); hash the recursively
  * key-sorted compact JSON view. Extra fields (e.g. our internal ones) must
